@@ -1,6 +1,6 @@
-use std::hint::unreachable_unchecked;
+use std::{fmt::Debug, hint::unreachable_unchecked};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct Word(i32);
 
 impl Word {
@@ -40,6 +40,12 @@ impl Word {
     #[inline(always)]
     fn extract(self, start: u32, len: u32, pos: u32) -> u32 {
         extract(self.u32(), start, len, pos)
+    }
+}
+
+impl Debug for Word {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:08x}", self.0)
     }
 }
 
@@ -188,7 +194,7 @@ impl Instr {
         let b = self.extract(25, 6, 5);
         let c = self.extract(20, 1, 11);
         let d = self.extract(12, 8, 12);
-        let e = self.extract(21, 1, 20);
+        let e = self.extract(31, 1, 20);
         Self::extend(a | b | c | d | e, 21)
     }
 

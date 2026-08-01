@@ -43,14 +43,19 @@ impl Vm {
         reg.set(&mut self.registers, value)
     }
 
-    fn load<const U: bool>(&self, addr: u32, width: Width) -> Word {
-        match (width, U) {
-            (Width::Byte, false) => i8::from_le_bytes(read_fixed(&self.memory, addr)).into(),
-            (Width::Byte, true) => u8::from_le_bytes(read_fixed(&self.memory, addr)).into(),
-            (Width::Half, false) => i16::from_le_bytes(read_fixed(&self.memory, addr)).into(),
-            (Width::Half, true) => u16::from_le_bytes(read_fixed(&self.memory, addr)).into(),
-            (Width::Word, false) => i32::from_le_bytes(read_fixed(&self.memory, addr)).into(),
-            (Width::Word, true) => u32::from_le_bytes(read_fixed(&self.memory, addr)).into(),
+    pub fn load(&self, addr: u32, width: Width) -> Word {
+        match width {
+            Width::Byte => i8::from_le_bytes(read_fixed(&self.memory, addr)).into(),
+            Width::Half => i16::from_le_bytes(read_fixed(&self.memory, addr)).into(),
+            Width::Word => i32::from_le_bytes(read_fixed(&self.memory, addr)).into(),
+        }
+    }
+
+    pub fn load_unsigned(&self, addr: u32, width: Width) -> Word {
+        match width {
+            Width::Byte => u8::from_le_bytes(read_fixed(&self.memory, addr)).into(),
+            Width::Half => u16::from_le_bytes(read_fixed(&self.memory, addr)).into(),
+            Width::Word => u32::from_le_bytes(read_fixed(&self.memory, addr)).into(),
         }
     }
 
@@ -64,7 +69,7 @@ impl Vm {
 
     fn fetch(&mut self) -> Instr {
         self.pc = self.next_pc;
-        let instr = self.load::<false>(self.pc, Width::Word).instr();
+        let instr = self.load(self.pc, Width::Word).instr();
         self.next_pc = self.pc.wrapping_add(4);
         instr
     }
@@ -84,25 +89,41 @@ impl Vm {
         let dis = rvdasm::disassembler::Disassembler::new(xlen);
 
         while !self.trap {
+            print!("{:08x}: ", self.next_pc);
             let instr = self.fetch();
-            println!(
-                "{:08x}: {}",
-                self.pc,
-                dis.disassmeble_one(instr.u32()).unwrap().to_string()
-            );
+            match dis.disassmeble_one(instr.u32()) {
+                Some(i) => println!("{}", i.to_string()),
+                None => println!("unknown <{:08x}>", instr.u32()),
+            }
             self.execute(instr);
+            if instr.u32() == 0x0000006f {
+                break;
+            }
+            // self.print_registers();
+        }
+    }
+
+    pub fn print_registers(&self) {
+        for i in 0..8 {
+            for j in 0..4 {
+                let r = 8 * j + i;
+                let s = if r < 10 { " " } else { "" };
+                print!("{}x{r}: {:?}\t", s, self.registers[r]);
+            }
+            println!();
         }
     }
 
     fn execute(&mut self, ins: Instr) {
+        // println!("opcode: {:07b}", ins.opcode());
         match ins.opcode() {
             0b0000011 => self.execute_load(ins),
             0b0100011 => self.execute_store(ins),
             0b0010011 => self.execute_arith::<true>(ins),
             0b0110011 => self.execute_arith::<false>(ins),
             0b1100011 => self.execute_branch(ins),
-            0b1100111 => self.execute_jal_imm(ins),
-            0b1101111 => self.execute_jal_reg(ins),
+            0b1101111 => self.execute_jal_imm(ins),
+            0b1100111 => self.execute_jal_reg(ins),
             0b0110111 => self.execute_load_upper_imm(ins),
             0b0010111 => self.execute_add_upper_imm_to_pc(ins),
             _ => self.illegal_instr(),
@@ -113,11 +134,11 @@ impl Vm {
         let addr = self.read(ins.rs1()).u32().wrapping_add(ins.i_imm().u32());
 
         let value = match ins.fn3() {
-            0b000 => self.load::<false>(addr, Width::Byte),
-            0b001 => self.load::<false>(addr, Width::Half),
-            0b010 => self.load::<false>(addr, Width::Word),
-            0b100 => self.load::<true>(addr, Width::Byte),
-            0b101 => self.load::<true>(addr, Width::Half),
+            0b000 => self.load(addr, Width::Byte),
+            0b001 => self.load(addr, Width::Half),
+            0b010 => self.load(addr, Width::Word),
+            0b100 => self.load_unsigned(addr, Width::Byte),
+            0b101 => self.load_unsigned(addr, Width::Half),
             _ => return self.illegal_instr(),
         };
 

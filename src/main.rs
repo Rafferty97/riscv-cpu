@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use crate::vm::{Vm, load_elf};
+use crate::{
+    instr::Width,
+    vm::{Vm, load_elf},
+};
 
 mod instr;
 mod vm;
@@ -21,6 +24,7 @@ fn main() {
     load_elf(&mut vm, &bytes).unwrap();
 
     vm.run();
-
-    println!("{vm:?}");
+    vm.print_registers();
+    let result = vm.load(0x1000, Width::Word);
+    println!("result = {}", result.u32());
 }

@@ -1,4 +1,4 @@
-use crate::instr::{Instr, Reg, Word};
+use crate::instr::{Instr, Reg, Width, Word};
 
 mod instr;
 
@@ -21,12 +21,25 @@ impl Vm {
         reg.set(&mut self.reg_file, value)
     }
 
-    fn load(&self, addr: u32) -> Word {
-        todo!()
+    fn load<const U: bool>(&self, addr: u32, width: Width) -> Word {
+        let mem = &self.memory[(addr as usize)..];
+        match (width, U) {
+            (Width::Byte, false) => i8::from_le_bytes(mem.try_into().unwrap()).into(),
+            (Width::Byte, true) => u8::from_le_bytes(mem.try_into().unwrap()).into(),
+            (Width::Half, false) => i16::from_le_bytes(mem.try_into().unwrap()).into(),
+            (Width::Half, true) => u16::from_le_bytes(mem.try_into().unwrap()).into(),
+            (Width::Word, false) => i32::from_le_bytes(mem.try_into().unwrap()).into(),
+            (Width::Word, true) => u32::from_le_bytes(mem.try_into().unwrap()).into(),
+        }
     }
 
-    fn store(&mut self, addr: u32) -> Word {
-        todo!()
+    fn store(&mut self, addr: u32, width: Width, value: Word) {
+        let mem = &mut self.memory[(addr as usize)..];
+        match width {
+            Width::Byte => mem[..1].copy_from_slice(&value.u8().to_le_bytes()),
+            Width::Half => mem[..2].copy_from_slice(&value.u16().to_le_bytes()),
+            Width::Word => mem[..4].copy_from_slice(&value.u32().to_le_bytes()),
+        }
     }
 
     fn read_pc(&self) -> usize {
@@ -53,11 +66,30 @@ impl Vm {
     }
 
     fn execute_load(&mut self, ins: Instr) {
-        // todo
+        let addr = self.read(ins.rs1()).u32().wrapping_add(ins.i_imm().u32());
+
+        let value = match ins.fn3() {
+            0b000 => self.load::<false>(addr, Width::Byte),
+            0b001 => self.load::<false>(addr, Width::Half),
+            0b010 => self.load::<false>(addr, Width::Word),
+            0b100 => self.load::<true>(addr, Width::Byte),
+            0b101 => self.load::<true>(addr, Width::Half),
+            _ => return self.illegal_instr(),
+        };
+
+        self.write(ins.rd(), value);
     }
 
     fn execute_store(&mut self, ins: Instr) {
-        // todo
+        let addr = self.read(ins.rs1()).u32().wrapping_add(ins.s_imm().u32());
+        let value = self.read(ins.rs2());
+
+        match ins.fn3() {
+            0b000 => self.store(addr, Width::Byte, value),
+            0b001 => self.store(addr, Width::Half, value),
+            0b010 => self.store(addr, Width::Word, value),
+            _ => return self.illegal_instr(),
+        }
     }
 
     fn execute_arith<const IMM: bool>(&mut self, ins: Instr) {

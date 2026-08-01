@@ -6,12 +6,28 @@ use bit_ops::bitops_u32;
 pub struct Word(i32);
 
 impl Word {
-    pub fn u32(self) -> u32 {
-        self.0 as u32
+    pub fn i8(self) -> i8 {
+        self.0 as i8
+    }
+
+    pub fn i16(self) -> i16 {
+        self.0 as i16
     }
 
     pub fn i32(self) -> i32 {
         self.0
+    }
+
+    pub fn u8(self) -> u8 {
+        self.0 as u8
+    }
+
+    pub fn u16(self) -> u16 {
+        self.0 as u16
+    }
+
+    pub fn u32(self) -> u32 {
+        self.0 as u32
     }
 
     pub fn fits(self, bit_cnt: u32) -> bool {
@@ -31,8 +47,14 @@ impl From<bool> for Word {
     }
 }
 
-impl From<u32> for Word {
-    fn from(value: u32) -> Self {
+impl From<i8> for Word {
+    fn from(value: i8) -> Self {
+        Self(value as _)
+    }
+}
+
+impl From<i16> for Word {
+    fn from(value: i16) -> Self {
         Self(value as _)
     }
 }
@@ -41,6 +63,31 @@ impl From<i32> for Word {
     fn from(value: i32) -> Self {
         Self(value as _)
     }
+}
+
+impl From<u8> for Word {
+    fn from(value: u8) -> Self {
+        Self(value as u32 as _)
+    }
+}
+
+impl From<u16> for Word {
+    fn from(value: u16) -> Self {
+        Self(value as u32 as _)
+    }
+}
+
+impl From<u32> for Word {
+    fn from(value: u32) -> Self {
+        Self(value as _)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Width {
+    Byte,
+    Half,
+    Word,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

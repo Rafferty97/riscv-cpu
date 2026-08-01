@@ -66,17 +66,17 @@ impl Vm {
             false => self.read(ins.rs2()),
             true => ins.i_imm(),
         };
-        let funct3 = ins.funct3();
-        let funct7 = match (IMM, funct3) {
-            (false, _) => ins.funct7(),
-            (true, 0b001 | 0b101) => ins.funct7(),
+        let fn3 = ins.fn3();
+        let fn7 = match (IMM, fn3) {
+            (false, _) => ins.fn7(),
+            (true, 0b001 | 0b101) => ins.fn7(),
             (true, _) => 0,
         };
 
         const F0: u32 = 0b0000000;
         const F1: u32 = 0b0100000;
 
-        let result = match (funct3, funct7) {
+        let result = match (fn3, fn7) {
             (0b000, F0) => lhs.i32().wrapping_add(rhs.i32()).into(),
             (0b000, F1) => lhs.i32().wrapping_sub(rhs.i32()).into(),
             (0b001, F0) => (lhs.i32() << (rhs.u32() & 31)).into(),

@@ -1,0 +1,7 @@
+[package]
+name = "riscv-cpu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bit_ops = "0.2.3"

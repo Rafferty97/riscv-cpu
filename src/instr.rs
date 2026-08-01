@@ -30,6 +30,10 @@ impl Word {
         self.0 as u32
     }
 
+    pub fn instr(self) -> Instr {
+        Instr(self.0 as u32)
+    }
+
     pub fn fits(self, bit_cnt: u32) -> bool {
         let shift = 32 - bit_cnt;
         ((self.i32() << shift) >> shift) == self.i32()

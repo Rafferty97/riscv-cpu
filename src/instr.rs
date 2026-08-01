@@ -1,8 +1,6 @@
 use std::hint::unreachable_unchecked;
 
-use bit_ops::bitops_u32;
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Word(i32);
 
 impl Word {
@@ -98,6 +96,10 @@ pub enum Width {
 pub struct Reg(u8);
 
 impl Reg {
+    pub const ZERO: Self = Reg(0);
+    pub const RA: Self = Reg(1);
+    pub const SP: Self = Reg(2);
+
     #[inline(always)]
     pub fn get(self, file: &[Word; 32]) -> Word {
         match self.0 {
@@ -191,8 +193,8 @@ impl Instr {
     }
 
     #[inline(always)]
-    pub fn test_bit(self, bit: u32) -> bool {
-        bitops_u32::is_set(self.0, bit)
+    pub fn u32(self) -> u32 {
+        self.0
     }
 
     #[inline(always)]
@@ -204,6 +206,12 @@ impl Instr {
     fn extend(value: u32, len: u32) -> Word {
         let shift = 32 - len;
         Word(((value as i32) << shift) >> shift)
+    }
+}
+
+impl FromIterator<Instr> for Vec<u8> {
+    fn from_iter<T: IntoIterator<Item = Instr>>(iter: T) -> Self {
+        iter.into_iter().flat_map(|ins| ins.0.to_le_bytes()).collect()
     }
 }
 
@@ -238,19 +246,22 @@ impl InstrBuilder {
         Self(self.0 | (fn7 << 25))
     }
 
-    pub fn i_imm(self, imm: Word) -> Self {
+    pub fn i_imm(self, imm: impl Into<Word>) -> Self {
+        let imm = imm.into();
         debug_assert!(imm.fits(12));
         Self(self.0 | imm.extract(0, 12, 20))
     }
 
-    pub fn s_imm(self, imm: Word) -> Self {
+    pub fn s_imm(self, imm: impl Into<Word>) -> Self {
+        let imm = imm.into();
         debug_assert!(imm.fits(12));
         let a = imm.extract(0, 5, 7);
         let b = imm.extract(5, 7, 25);
         Self(self.0 | a | b)
     }
 
-    pub fn b_imm(self, imm: Word) -> Self {
+    pub fn b_imm(self, imm: impl Into<Word>) -> Self {
+        let imm = imm.into();
         debug_assert_eq!(imm.u32() & 1, 0);
         debug_assert!(imm.fits(13));
         let a = imm.extract(11, 1, 7);
@@ -260,12 +271,14 @@ impl InstrBuilder {
         Self(self.0 | a | b | c | d)
     }
 
-    pub fn u_imm(self, imm: Word) -> Self {
+    pub fn u_imm(self, imm: impl Into<Word>) -> Self {
+        let imm = imm.into();
         debug_assert_eq!(imm.u32() & 0xfff, 0);
         Self(self.0 | imm.extract(12, 20, 12))
     }
 
-    pub fn j_imm(self, imm: Word) -> Self {
+    pub fn j_imm(self, imm: impl Into<Word>) -> Self {
+        let imm = imm.into();
         debug_assert_eq!(imm.u32() & 1, 0);
         debug_assert!(imm.fits(21));
         let a = imm.extract(12, 8, 12);
@@ -273,6 +286,10 @@ impl InstrBuilder {
         let c = imm.extract(1, 10, 21);
         let d = imm.extract(31, 1, 31);
         Self(self.0 | a | b | c | d)
+    }
+
+    pub fn build(self) -> Instr {
+        Instr(self.0)
     }
 }
 

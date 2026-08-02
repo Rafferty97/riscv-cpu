@@ -126,6 +126,7 @@ impl Vm {
             0b1100111 => self.execute_jal_reg(ins),
             0b0110111 => self.execute_load_upper_imm(ins),
             0b0010111 => self.execute_add_upper_imm_to_pc(ins),
+            0b0001111 => self.execute_misc_mem(ins),
             _ => self.illegal_instr(),
         }
     }
@@ -279,6 +280,13 @@ impl Vm {
         let pc = self.read_pc();
         let result = pc.wrapping_add_signed(ins.u_imm().i32());
         self.write(ins.rd(), result.into());
+    }
+
+    fn execute_misc_mem(&mut self, ins: Instr) {
+        match ins.fn3() {
+            0b000 | 0b001 => {}
+            _ => return self.illegal_instr(),
+        }
     }
 
     fn illegal_instr(&mut self) {

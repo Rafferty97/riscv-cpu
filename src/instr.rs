@@ -16,6 +16,10 @@ impl Word {
         self.0
     }
 
+    pub fn i64(self) -> i64 {
+        self.0 as i64
+    }
+
     pub fn u8(self) -> u8 {
         self.0 as u8
     }
@@ -26,6 +30,10 @@ impl Word {
 
     pub fn u32(self) -> u32 {
         self.0 as u32
+    }
+
+    pub fn u64(self) -> u64 {
+        self.0 as u64
     }
 
     pub fn instr(self) -> Instr {
@@ -73,6 +81,12 @@ impl From<i32> for Word {
     }
 }
 
+impl From<i64> for Word {
+    fn from(value: i64) -> Self {
+        Self(value as _)
+    }
+}
+
 impl From<u8> for Word {
     fn from(value: u8) -> Self {
         Self(value as u32 as _)
@@ -87,6 +101,12 @@ impl From<u16> for Word {
 
 impl From<u32> for Word {
     fn from(value: u32) -> Self {
+        Self(value as _)
+    }
+}
+
+impl From<u64> for Word {
+    fn from(value: u64) -> Self {
         Self(value as _)
     }
 }

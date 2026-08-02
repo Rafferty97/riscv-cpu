@@ -119,8 +119,8 @@ impl Vm {
         match ins.opcode() {
             0b0000011 => self.execute_load(ins),
             0b0100011 => self.execute_store(ins),
-            0b0010011 => self.execute_arith::<true>(ins),
-            0b0110011 => self.execute_arith::<false>(ins),
+            0b0010011 => self.execute_arith_imm(ins),
+            0b0110011 => self.execute_arith(ins),
             0b1100011 => self.execute_branch(ins),
             0b1101111 => self.execute_jal_imm(ins),
             0b1100111 => self.execute_jal_reg(ins),
@@ -157,36 +157,79 @@ impl Vm {
         }
     }
 
-    fn execute_arith<const IMM: bool>(&mut self, ins: Instr) {
+    fn execute_arith_imm(&mut self, ins: Instr) {
         let lhs = self.read(ins.rs1());
-        let rhs = match IMM {
-            false => self.read(ins.rs2()),
-            true => ins.i_imm(),
-        };
-        let fn3 = ins.fn3();
-        let fn7 = match (IMM, fn3) {
-            (false, _) => ins.fn7(),
-            (true, 0b001 | 0b101) => ins.fn7(),
-            (true, _) => 0,
-        };
+        let rhs = ins.i_imm();
 
         const F0: u32 = 0b0000000;
         const F1: u32 = 0b0100000;
 
-        let result = match (fn3, fn7) {
-            (0b000, F0) => lhs.i32().wrapping_add(rhs.i32()).into(),
-            (0b000, F1) => lhs.i32().wrapping_sub(rhs.i32()).into(),
+        let result = match (ins.fn3(), ins.fn7()) {
+            (0b000, _) => lhs.i32().wrapping_add(rhs.i32()).into(),
             (0b001, F0) => (lhs.i32() << (rhs.u32() & 31)).into(),
-            (0b010, F0) => (lhs.i32() < rhs.i32()).into(),
-            (0b011, F0) => (lhs.u32() < rhs.u32()).into(),
-            (0b100, F0) => (lhs.u32() ^ rhs.u32()).into(),
+            (0b010, _) => (lhs.i32() < rhs.i32()).into(),
+            (0b011, _) => (lhs.u32() < rhs.u32()).into(),
+            (0b100, _) => (lhs.u32() ^ rhs.u32()).into(),
             (0b101, F0) => (lhs.u32() >> (rhs.u32() & 31)).into(),
             (0b101, F1) => (lhs.i32() >> (rhs.u32() & 31)).into(),
-            (0b110, F0) => (lhs.u32() | rhs.u32()).into(),
-            (0b111, F0) => (lhs.u32() & rhs.u32()).into(),
+            (0b110, _) => (lhs.u32() | rhs.u32()).into(),
+            (0b111, _) => (lhs.u32() & rhs.u32()).into(),
             _ => return self.illegal_instr(),
         };
 
+        self.write(ins.rd(), result);
+    }
+
+    fn execute_arith(&mut self, ins: Instr) {
+        let lhs = self.read(ins.rs1());
+        let rhs = self.read(ins.rs2());
+        match ins.fn7() {
+            0b0000000 => self.execute_arith_int(ins, lhs, rhs, false),
+            0b0100000 => self.execute_arith_int(ins, lhs, rhs, true),
+            0b0000001 => self.execute_arith_mul(ins, lhs, rhs),
+            _ => return self.illegal_instr(),
+        }
+    }
+
+    fn execute_arith_int(&mut self, ins: Instr, lhs: Word, rhs: Word, alt: bool) {
+        let result = match (ins.fn3(), alt) {
+            (0b000, false) => lhs.i32().wrapping_add(rhs.i32()).into(),
+            (0b000, true) => lhs.i32().wrapping_sub(rhs.i32()).into(),
+            (0b001, false) => (lhs.i32() << (rhs.u32() & 31)).into(),
+            (0b010, false) => (lhs.i32() < rhs.i32()).into(),
+            (0b011, false) => (lhs.u32() < rhs.u32()).into(),
+            (0b100, false) => (lhs.u32() ^ rhs.u32()).into(),
+            (0b101, false) => (lhs.u32() >> (rhs.u32() & 31)).into(),
+            (0b101, true) => (lhs.i32() >> (rhs.u32() & 31)).into(),
+            (0b110, false) => (lhs.u32() | rhs.u32()).into(),
+            (0b111, false) => (lhs.u32() & rhs.u32()).into(),
+            _ => return self.illegal_instr(),
+        };
+        self.write(ins.rd(), result);
+    }
+
+    fn execute_arith_mul(&mut self, ins: Instr, lhs: Word, rhs: Word) {
+        let result = match ins.fn3() {
+            0b000 => lhs.i32().wrapping_mul(rhs.i32()).into(),
+            0b001 => (lhs.i64().wrapping_mul(rhs.i64()) >> 32).into(),
+            0b010 => (lhs.i64().wrapping_mul(rhs.u64() as i64) >> 32).into(),
+            0b011 => (lhs.u64().wrapping_mul(rhs.u64()) >> 32).into(),
+            0b100 => match (lhs.i32(), rhs.i32()) {
+                (_, 0) => -1,
+                (i32::MIN, -1) => i32::MIN,
+                (lhs, rhs) => lhs / rhs,
+            }
+            .into(),
+            0b101 => lhs.u32().checked_div(rhs.u32()).unwrap_or(!0).into(),
+            0b110 => match (lhs.i32(), rhs.i32()) {
+                (x, 0) => x,
+                (i32::MIN, -1) => 0,
+                (lhs, rhs) => lhs / rhs,
+            }
+            .into(),
+            0b111 => lhs.u32().checked_rem(rhs.u32()).unwrap_or(lhs.u32()).into(),
+            _ => return self.illegal_instr(),
+        };
         self.write(ins.rd(), result);
     }
 
@@ -239,8 +282,8 @@ impl Vm {
     }
 
     fn illegal_instr(&mut self) {
+        eprintln!("illegal instruction");
         self.trap = true;
-        // panic!("illegal instruction");
     }
 }
 

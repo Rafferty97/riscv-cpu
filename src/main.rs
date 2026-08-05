@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use crate::{
-    instr::Width,
-    vm::{Vm, load_elf},
-};
+use crate::instr::Width;
+use crate::vm::{Vm, load_elf};
 
+mod decode;
 mod instr;
 mod vm;
 

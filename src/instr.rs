@@ -4,6 +4,8 @@ use std::{fmt::Debug, hint::unreachable_unchecked};
 pub struct Word(i32);
 
 impl Word {
+    pub const ZERO: Self = Self(0);
+
     pub fn i8(self) -> i8 {
         self.0 as i8
     }
@@ -36,8 +38,8 @@ impl Word {
         self.0 as u64
     }
 
-    pub fn instr(self) -> Instr {
-        Instr(self.0 as u32)
+    pub fn instr(self) -> EncInstr {
+        EncInstr(self.0 as u32)
     }
 
     pub fn fits(self, bit_cnt: u32) -> bool {
@@ -149,9 +151,9 @@ impl Reg {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Instr(u32);
+pub struct EncInstr(u32);
 
-impl Instr {
+impl EncInstr {
     #[inline(always)]
     pub fn opcode(self) -> u32 {
         self.0 & 127
@@ -235,8 +237,8 @@ impl Instr {
     }
 }
 
-impl FromIterator<Instr> for Vec<u8> {
-    fn from_iter<T: IntoIterator<Item = Instr>>(iter: T) -> Self {
+impl FromIterator<EncInstr> for Vec<u8> {
+    fn from_iter<T: IntoIterator<Item = EncInstr>>(iter: T) -> Self {
         iter.into_iter().flat_map(|ins| ins.0.to_le_bytes()).collect()
     }
 }
@@ -314,8 +316,8 @@ impl InstrBuilder {
         Self(self.0 | a | b | c | d)
     }
 
-    pub fn build(self) -> Instr {
-        Instr(self.0)
+    pub fn build(self) -> EncInstr {
+        EncInstr(self.0)
     }
 }
 

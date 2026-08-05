@@ -2,7 +2,10 @@ use std::fmt::Debug;
 
 use object::{Object, ObjectSegment};
 
-use crate::instr::{Instr, Reg, Width, Word};
+use crate::{
+    decode::Instr,
+    instr::{EncInstr, Reg, Width, Word},
+};
 
 const STACK_TOP: u32 = 0x10000;
 
@@ -26,13 +29,7 @@ impl Debug for Vm {
 
 impl Vm {
     pub fn new(memory: Vec<u8>) -> Self {
-        Self {
-            pc: 0,
-            next_pc: 0,
-            registers: Default::default(),
-            memory,
-            trap: false,
-        }
+        Self { pc: 0, next_pc: 0, registers: Default::default(), memory, trap: false }
     }
 
     fn read(&self, reg: Reg) -> Word {
@@ -67,7 +64,7 @@ impl Vm {
         }
     }
 
-    fn fetch(&mut self) -> Instr {
+    fn fetch(&mut self) -> EncInstr {
         self.pc = self.next_pc;
         let instr = self.load(self.pc, Width::Word).instr();
         self.next_pc = self.pc.wrapping_add(4);
@@ -95,6 +92,7 @@ impl Vm {
                 Some(i) => println!("{}", i.to_string()),
                 None => println!("unknown <{:08x}>", instr.u32()),
             }
+            println!("    {:?}", Instr::decode(instr));
             self.execute(instr);
             if instr.u32() == 0x0000006f {
                 break;
@@ -114,7 +112,7 @@ impl Vm {
         }
     }
 
-    fn execute(&mut self, ins: Instr) {
+    fn execute(&mut self, ins: EncInstr) {
         // println!("opcode: {:07b}", ins.opcode());
         match ins.opcode() {
             0b0000011 => self.execute_load(ins),
@@ -131,7 +129,7 @@ impl Vm {
         }
     }
 
-    fn execute_load(&mut self, ins: Instr) {
+    fn execute_load(&mut self, ins: EncInstr) {
         let addr = self.read(ins.rs1()).u32().wrapping_add(ins.i_imm().u32());
 
         let value = match ins.fn3() {
@@ -146,7 +144,7 @@ impl Vm {
         self.write(ins.rd(), value);
     }
 
-    fn execute_store(&mut self, ins: Instr) {
+    fn execute_store(&mut self, ins: EncInstr) {
         let addr = self.read(ins.rs1()).u32().wrapping_add(ins.s_imm().u32());
         let value = self.read(ins.rs2());
 
@@ -158,7 +156,7 @@ impl Vm {
         }
     }
 
-    fn execute_arith_imm(&mut self, ins: Instr) {
+    fn execute_arith_imm(&mut self, ins: EncInstr) {
         let lhs = self.read(ins.rs1());
         let rhs = ins.i_imm();
 
@@ -181,7 +179,7 @@ impl Vm {
         self.write(ins.rd(), result);
     }
 
-    fn execute_arith(&mut self, ins: Instr) {
+    fn execute_arith(&mut self, ins: EncInstr) {
         let lhs = self.read(ins.rs1());
         let rhs = self.read(ins.rs2());
         match ins.fn7() {
@@ -192,7 +190,7 @@ impl Vm {
         }
     }
 
-    fn execute_arith_int(&mut self, ins: Instr, lhs: Word, rhs: Word, alt: bool) {
+    fn execute_arith_int(&mut self, ins: EncInstr, lhs: Word, rhs: Word, alt: bool) {
         let result = match (ins.fn3(), alt) {
             (0b000, false) => lhs.i32().wrapping_add(rhs.i32()).into(),
             (0b000, true) => lhs.i32().wrapping_sub(rhs.i32()).into(),
@@ -209,7 +207,7 @@ impl Vm {
         self.write(ins.rd(), result);
     }
 
-    fn execute_arith_mul(&mut self, ins: Instr, lhs: Word, rhs: Word) {
+    fn execute_arith_mul(&mut self, ins: EncInstr, lhs: Word, rhs: Word) {
         let result = match ins.fn3() {
             0b000 => lhs.i32().wrapping_mul(rhs.i32()).into(),
             0b001 => (lhs.i64().wrapping_mul(rhs.i64()) >> 32).into(),
@@ -234,7 +232,7 @@ impl Vm {
         self.write(ins.rd(), result);
     }
 
-    fn execute_branch(&mut self, ins: Instr) {
+    fn execute_branch(&mut self, ins: EncInstr) {
         let lhs = self.read(ins.rs1());
         let rhs = self.read(ins.rs2());
 
@@ -255,7 +253,7 @@ impl Vm {
         }
     }
 
-    fn execute_jal_imm(&mut self, ins: Instr) {
+    fn execute_jal_imm(&mut self, ins: EncInstr) {
         let pc = self.read_pc();
         let offset = ins.j_imm().i32();
 
@@ -263,7 +261,7 @@ impl Vm {
         self.write_pc(pc.wrapping_add_signed(offset));
     }
 
-    fn execute_jal_reg(&mut self, ins: Instr) {
+    fn execute_jal_reg(&mut self, ins: EncInstr) {
         let pc = self.read_pc();
         let rs1 = self.read(ins.rs1()).u32();
         let imm = ins.i_imm().i32();
@@ -272,17 +270,17 @@ impl Vm {
         self.write_pc(rs1.wrapping_add_signed(imm) & !1);
     }
 
-    fn execute_load_upper_imm(&mut self, ins: Instr) {
+    fn execute_load_upper_imm(&mut self, ins: EncInstr) {
         self.write(ins.rd(), ins.u_imm());
     }
 
-    fn execute_add_upper_imm_to_pc(&mut self, ins: Instr) {
+    fn execute_add_upper_imm_to_pc(&mut self, ins: EncInstr) {
         let pc = self.read_pc();
         let result = pc.wrapping_add_signed(ins.u_imm().i32());
         self.write(ins.rd(), result.into());
     }
 
-    fn execute_misc_mem(&mut self, ins: Instr) {
+    fn execute_misc_mem(&mut self, ins: EncInstr) {
         match ins.fn3() {
             0b000 | 0b001 => {}
             _ => return self.illegal_instr(),

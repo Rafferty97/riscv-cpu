@@ -67,6 +67,9 @@ pub enum Instr {
     Jump(Imm),
     Jr(Rs1Imm),
     Ret,
+    // System
+    Ecall,
+    Ebreak,
     // Illegal
     Illegal(EncInstr),
 }
@@ -132,6 +135,7 @@ impl Instr {
             0b0110111 => Self::Lui(RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.u_imm() }),
             0b0010111 => Self::Auipc(RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.u_imm() }),
             0b0001111 => Self::decode_misc_mem(enc),
+            0b1110011 => Self::decode_system(enc),
             _ => Self::Illegal(enc),
         }
     }
@@ -238,6 +242,17 @@ impl Instr {
     fn decode_misc_mem(enc: EncInstr) -> Self {
         match enc.fn3() {
             0b000 | 0b001 => todo!(),
+            _ => Self::Illegal(enc),
+        }
+    }
+
+    fn decode_system(enc: EncInstr) -> Self {
+        if enc.rd() != Reg::ZERO || enc.rs1() != Reg::ZERO || enc.fn3() != 0 {
+            return Self::Illegal(enc);
+        }
+        match enc.fn7() {
+            0b000000000000 => Self::Ecall,
+            0b000000000001 => Self::Ebreak,
             _ => Self::Illegal(enc),
         }
     }
@@ -359,6 +374,8 @@ impl Display for Instr {
             Self::Jump(args) => write(f, "j", args),
             Self::Jr(args) => write(f, "jr", args),
             Self::Ret => write(f, "ret", ""),
+            Self::Ecall => write(f, "ecall", ""),
+            Self::Ebreak => write(f, "ebreak", ""),
             Self::Illegal(enc) => write!(f, "<illegal {:#010x}>", enc.u32()),
         }
     }

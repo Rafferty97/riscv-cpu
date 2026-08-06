@@ -30,6 +30,12 @@ pub enum Instr {
     Seqz(RdRs1),
     Not(RdRs1),
     Nop,
+    // Integer register-immediate (rv64)
+    Addiw(RdRs1Imm),
+    Slliw(RdRs1Imm),
+    Srliw(RdRs1Imm),
+    Sraiw(RdRs1Imm),
+    Sextw(RdRs1),
     // Integer register-register
     Add(RdRs1Rs2),
     Sub(RdRs1Rs2),
@@ -138,7 +144,9 @@ impl Instr {
             0b0000011 => Self::decode_load(enc),
             0b0100011 => Self::decode_store(enc),
             0b0010011 => Self::decode_int_imm(enc),
+            0b0011011 => Self::decode_int_imm_32(enc),
             0b0110011 => Self::decode_int(enc),
+            0b0111011 => Self::decode_int_32(enc),
             0b1100011 => Self::decode_branch(enc),
             0b1101111 => Self::Jal(RdImm { rd: enc.rd(), imm: enc.j_imm() }),
             0b1100111 => Self::Jalr(RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.i_imm() }),
@@ -175,21 +183,38 @@ impl Instr {
     }
 
     fn decode_int_imm(enc: EncInstr) -> Self {
-        const F0: u32 = 0b0000000;
-        const F1: u32 = 0b0100000;
+        const F0: u32 = 0b000000;
+        const F1: u32 = 0b010000;
 
-        let args = RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.i_imm() };
+        let (rd, rs1, imm) = (enc.rd(), enc.rs1(), enc.i_imm());
+        let args = RdRs1Imm { rd, rs1, imm };
 
-        match (enc.fn3(), enc.fn7()) {
+        match (enc.fn3(), enc.fn7() >> 1) {
             (0b000, _) => Self::Addi(args),
-            (0b001, F0) => Self::Slli(args),
+            (0b001, F0) => Self::Slli(RdRs1Imm { rd, rs1, imm: imm & 63 }),
             (0b010, _) => Self::Slti(args),
             (0b011, _) => Self::Sltiu(args),
             (0b100, _) => Self::Xori(args),
-            (0b101, F0) => Self::Srli(args),
-            (0b101, F1) => Self::Srai(args),
+            (0b101, F0) => Self::Srli(RdRs1Imm { rd, rs1, imm: imm & 63 }),
+            (0b101, F1) => Self::Srai(RdRs1Imm { rd, rs1, imm: imm & 63 }),
             (0b110, _) => Self::Ori(args),
             (0b111, _) => Self::Andi(args),
+            _ => Self::Illegal(enc),
+        }
+    }
+
+    fn decode_int_imm_32(enc: EncInstr) -> Self {
+        const F0: u32 = 0b0000000;
+        const F1: u32 = 0b0100000;
+
+        let (rd, rs1, imm) = (enc.rd(), enc.rs1(), enc.i_imm());
+        let args = RdRs1Imm { rd, rs1, imm };
+
+        match (enc.fn3(), enc.fn7()) {
+            (0b000, _) => Self::Addiw(args),
+            (0b001, F0) => Self::Slliw(RdRs1Imm { rd, rs1, imm: imm & 31 }),
+            (0b101, F0) => Self::Srliw(RdRs1Imm { rd, rs1, imm: imm & 31 }),
+            (0b101, F1) => Self::Sraiw(RdRs1Imm { rd, rs1, imm: imm & 31 }),
             _ => Self::Illegal(enc),
         }
     }
@@ -275,7 +300,8 @@ impl Instr {
             Self::Li(RdImm { rd, imm }) => Self::Addi(RdRs1Imm { rd, rs1: Reg::ZERO, imm }),
             Self::Seqz(RdRs1 { rd, rs1 }) => Self::Sltiu(RdRs1Imm { rd, rs1, imm: Word::ONE }),
             Self::Not(RdRs1 { rd, rs1 }) => Self::Xori(RdRs1Imm { rd, rs1, imm: Word::NEG_ONE }),
-            Self::Nop => Self::Addi(RdRs1Imm { rd: Reg::ZERO, rs1: Reg::ZERO, imm: Word::ZERO }),
+            Self::Nop => Self::Addiw(RdRs1Imm { rd: Reg::ZERO, rs1: Reg::ZERO, imm: Word::ZERO }),
+            Self::Sextw(RdRs1 { rd, rs1 }) => Self::Addi(RdRs1Imm { rd, rs1, imm: Word::ZERO }),
             Self::Snez(RdRs1 { rd, rs1 }) => Self::Sltu(RdRs1Rs2 { rd, rs1: Reg::ZERO, rs2: rs1 }),
             Self::Sltz(RdRs1 { rd, rs1 }) => Self::Slt(RdRs1Rs2 { rd, rs1, rs2: Reg::ZERO }),
             Self::Sgtz(RdRs1 { rd, rs1 }) => Self::Slt(RdRs1Rs2 { rd, rs1: Reg::ZERO, rs2: rs1 }),
@@ -311,6 +337,10 @@ impl Instr {
             },
             Self::Xori(RdRs1Imm { rd, rs1, imm }) => match imm {
                 Word::NEG_ONE => Self::Not(RdRs1 { rd, rs1 }),
+                _ => self,
+            },
+            Self::Addiw(RdRs1Imm { rd, rs1, imm }) => match imm {
+                Word::ZERO => Self::Sextw(RdRs1 { rd, rs1 }),
                 _ => self,
             },
             Self::Sub(RdRs1Rs2 { rd, rs1, rs2 }) => match rs1 {
@@ -387,6 +417,11 @@ impl Display for Instr {
             Self::Seqz(args) => write(f, "seqz", args),
             Self::Not(args) => write(f, "not", args),
             Self::Nop => write(f, "nop", ""),
+            Self::Addiw(args) => write(f, "addiw", args),
+            Self::Slliw(args) => write(f, "slliw", args),
+            Self::Srliw(args) => write(f, "srliw", args),
+            Self::Sraiw(args) => write(f, "sraiw", args),
+            Self::Sextw(args) => write(f, "sext.w", args),
             Self::Add(args) => write(f, "add", args),
             Self::Sub(args) => write(f, "sub", args),
             Self::Slt(args) => write(f, "slt", args),

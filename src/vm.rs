@@ -2,10 +2,8 @@ use std::fmt::Debug;
 
 use object::{Object, ObjectSegment};
 
-use crate::{
-    decode::Instr,
-    instr::{EncInstr, Reg, Width, Word},
-};
+use crate::decode::Instr;
+use crate::instr::{EncInstr, Reg, Width, Word};
 
 const STACK_TOP: u32 = 0x10000;
 

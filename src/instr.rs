@@ -4,7 +4,9 @@ use std::{fmt::Debug, hint::unreachable_unchecked};
 pub struct Word(i32);
 
 impl Word {
+    pub const NEG_ONE: Self = Self(-1);
     pub const ZERO: Self = Self(0);
+    pub const ONE: Self = Self(1);
 
     pub fn i8(self) -> i8 {
         self.0 as i8

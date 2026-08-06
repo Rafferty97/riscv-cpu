@@ -88,11 +88,11 @@ impl Vm {
         while !self.trap {
             print!("{:08x}: ", self.next_pc);
             let instr = self.fetch();
-            match dis.disassmeble_one(instr.u32()) {
-                Some(i) => println!("{}", i.to_string()),
-                None => println!("unknown <{:08x}>", instr.u32()),
-            }
-            println!("    {:?}", Instr::decode(instr));
+            println!("{}", Instr::decode_with_pseudos(instr));
+            // match dis.disassmeble_one(instr.u32()) {
+            //     Some(i) => println!("    {}", i.to_string()),
+            //     None => {}
+            // }
             self.execute(instr);
             if instr.u32() == 0x0000006f {
                 break;

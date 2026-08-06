@@ -51,6 +51,12 @@ pub enum Instr {
     Sltz(RdRs1),
     Sgtz(RdRs1),
     Neg(RdRs1),
+    // Integer register-register (rv64)
+    Addw(RdRs1Rs2),
+    Subw(RdRs1Rs2),
+    Sllw(RdRs1Rs2),
+    Srlw(RdRs1Rs2),
+    Sraw(RdRs1Rs2),
     // Multiplication
     Mul(RdRs1Rs2),
     Mulh(RdRs1Rs2),
@@ -60,6 +66,12 @@ pub enum Instr {
     Divu(RdRs1Rs2),
     Rem(RdRs1Rs2),
     Remu(RdRs1Rs2),
+    // Multiplication
+    Mulw(RdRs1Rs2),
+    Divw(RdRs1Rs2),
+    Divuw(RdRs1Rs2),
+    Remw(RdRs1Rs2),
+    Remuw(RdRs1Rs2),
     // Branch
     Beq(Rs1Rs2Imm),
     Bne(Rs1Rs2Imm),
@@ -260,6 +272,39 @@ impl Instr {
         }
     }
 
+    fn decode_int_32(enc: EncInstr) -> Self {
+        let args = RdRs1Rs2 { rd: enc.rd(), rs1: enc.rs1(), rs2: enc.rs2() };
+
+        match enc.fn7() {
+            0b0000000 => Self::decode_base_int_32(enc, args, false),
+            0b0100000 => Self::decode_base_int_32(enc, args, true),
+            0b0000001 => Self::decode_mul_32(enc, args),
+            _ => Self::Illegal(enc),
+        }
+    }
+
+    fn decode_base_int_32(enc: EncInstr, operands: RdRs1Rs2, alt: bool) -> Self {
+        match (enc.fn3(), alt) {
+            (0b000, false) => Self::Addw(operands),
+            (0b000, true) => Self::Subw(operands),
+            (0b001, false) => Self::Sllw(operands),
+            (0b101, false) => Self::Srlw(operands),
+            (0b101, true) => Self::Sraw(operands),
+            _ => Self::Illegal(enc),
+        }
+    }
+
+    fn decode_mul_32(enc: EncInstr, operands: RdRs1Rs2) -> Self {
+        match enc.fn3() {
+            0b000 => Self::Mulw(operands),
+            0b100 => Self::Divw(operands),
+            0b101 => Self::Divuw(operands),
+            0b110 => Self::Remw(operands),
+            0b111 => Self::Remuw(operands),
+            _ => Self::Illegal(enc),
+        }
+    }
+
     fn decode_branch(enc: EncInstr) -> Self {
         let args = Rs1Rs2Imm { rs1: enc.rs1(), rs2: enc.rs2(), imm: enc.b_imm() };
 
@@ -436,6 +481,11 @@ impl Display for Instr {
             Self::Sltz(args) => write(f, "sltz", args),
             Self::Sgtz(args) => write(f, "sgtz", args),
             Self::Neg(args) => write(f, "neg", args),
+            Self::Addw(args) => write(f, "addw", args),
+            Self::Subw(args) => write(f, "subw", args),
+            Self::Sllw(args) => write(f, "sllw", args),
+            Self::Srlw(args) => write(f, "srlw", args),
+            Self::Sraw(args) => write(f, "sraw", args),
             Self::Mul(args) => write(f, "mul", args),
             Self::Mulh(args) => write(f, "mulh", args),
             Self::Mulhu(args) => write(f, "mulhu", args),
@@ -444,6 +494,11 @@ impl Display for Instr {
             Self::Divu(args) => write(f, "divu", args),
             Self::Rem(args) => write(f, "rem", args),
             Self::Remu(args) => write(f, "remu", args),
+            Self::Mulw(args) => write(f, "mulw", args),
+            Self::Divw(args) => write(f, "divw", args),
+            Self::Divuw(args) => write(f, "divuw", args),
+            Self::Remw(args) => write(f, "remw", args),
+            Self::Remuw(args) => write(f, "remuw", args),
             Self::Beq(args) => write(f, "beq", args),
             Self::Bne(args) => write(f, "bne", args),
             Self::Blt(args) => write(f, "blt", args),

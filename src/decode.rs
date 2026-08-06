@@ -5,11 +5,14 @@ use crate::instr::{EncInstr, Reg, Word};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Instr {
     // Load/store
+    Ld(RdRs1Imm),
     Lw(RdRs1Imm),
+    Lwu(RdRs1Imm),
     Lh(RdRs1Imm),
     Lhu(RdRs1Imm),
     Lb(RdRs1Imm),
     Lbu(RdRs1Imm),
+    Sd(Rs1Rs2Imm),
     Sw(Rs1Rs2Imm),
     Sh(Rs1Rs2Imm),
     Sb(Rs1Rs2Imm),
@@ -177,8 +180,10 @@ impl Instr {
             0b000 => Self::Lb(args),
             0b001 => Self::Lh(args),
             0b010 => Self::Lw(args),
+            0b011 => Self::Ld(args),
             0b100 => Self::Lbu(args),
             0b101 => Self::Lhu(args),
+            0b110 => Self::Lwu(args),
             _ => Self::Illegal(enc),
         }
     }
@@ -190,6 +195,7 @@ impl Instr {
             0b000 => Self::Sb(args),
             0b001 => Self::Sh(args),
             0b010 => Self::Sw(args),
+            0b011 => Self::Sd(args),
             _ => Self::Illegal(enc),
         }
     }
@@ -438,11 +444,14 @@ impl Display for Instr {
         }
 
         match self {
+            Self::Ld(args) => write(f, "ld", args),
             Self::Lw(args) => write(f, "lw", args),
+            Self::Lwu(args) => write(f, "lwu", args),
             Self::Lh(args) => write(f, "lh", args),
             Self::Lhu(args) => write(f, "lhu", args),
             Self::Lb(args) => write(f, "lb", args),
             Self::Lbu(args) => write(f, "lbu", args),
+            Self::Sd(args) => write(f, "sd", args),
             Self::Sw(args) => write(f, "sw", args),
             Self::Sh(args) => write(f, "sh", args),
             Self::Sb(args) => write(f, "sb", args),

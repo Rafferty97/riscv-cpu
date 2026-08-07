@@ -1,162 +1,37 @@
-use std::{fmt::Debug, hint::unreachable_unchecked, ops::BitAnd};
+use std::ops::{BitAnd, BitOr};
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub struct Word(i32);
+use crate::bit_utils;
 
-impl Word {
-    pub const NEG_ONE: Self = Self(-1);
-    pub const ZERO: Self = Self(0);
-    pub const ONE: Self = Self(1);
-
-    pub fn i8(self) -> i8 {
-        self.0 as i8
-    }
-
-    pub fn i16(self) -> i16 {
-        self.0 as i16
-    }
-
-    pub fn i32(self) -> i32 {
-        self.0
-    }
-
-    pub fn i64(self) -> i64 {
-        self.0 as i64
-    }
-
-    pub fn u8(self) -> u8 {
-        self.0 as u8
-    }
-
-    pub fn u16(self) -> u16 {
-        self.0 as u16
-    }
-
-    pub fn u32(self) -> u32 {
-        self.0 as u32
-    }
-
-    pub fn u64(self) -> u64 {
-        self.0 as u64
-    }
-
-    pub fn instr(self) -> EncInstr {
-        EncInstr(self.0 as u32)
-    }
-
-    pub fn fits(self, bit_cnt: u32) -> bool {
-        let shift = 32 - bit_cnt;
-        ((self.i32() << shift) >> shift) == self.i32()
-    }
-
-    #[inline(always)]
-    fn extract(self, start: u32, len: u32, pos: u32) -> u32 {
-        extract(self.u32(), start, len, pos)
-    }
-}
-
-impl Debug for Word {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:08x}", self.0)
-    }
-}
-
-impl From<bool> for Word {
-    fn from(value: bool) -> Self {
-        Self(value as _)
-    }
-}
-
-impl From<i8> for Word {
-    fn from(value: i8) -> Self {
-        Self(value as _)
-    }
-}
-
-impl From<i16> for Word {
-    fn from(value: i16) -> Self {
-        Self(value as _)
-    }
-}
-
-impl From<i32> for Word {
-    fn from(value: i32) -> Self {
-        Self(value as _)
-    }
-}
-
-impl From<i64> for Word {
-    fn from(value: i64) -> Self {
-        Self(value as _)
-    }
-}
-
-impl From<u8> for Word {
-    fn from(value: u8) -> Self {
-        Self(value as u32 as _)
-    }
-}
-
-impl From<u16> for Word {
-    fn from(value: u16) -> Self {
-        Self(value as u32 as _)
-    }
-}
-
-impl From<u32> for Word {
-    fn from(value: u32) -> Self {
-        Self(value as _)
-    }
-}
-
-impl From<u64> for Word {
-    fn from(value: u64) -> Self {
-        Self(value as _)
-    }
-}
-
-impl BitAnd for Word {
-    type Output = Word;
-
-    fn bitand(self, rhs: Self) -> Self {
-        Self(self.0 & rhs.0)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Width {
-    Byte,
-    Half,
-    Word,
-}
+mod decode;
+mod encode;
+mod print;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Reg(u8);
 
 impl Reg {
-    pub const ZERO: Self = Reg(0);
-    pub const RA: Self = Reg(1);
-    pub const SP: Self = Reg(2);
-
-    #[inline(always)]
-    pub fn get(self, file: &[Word; 32]) -> Word {
-        match self.0 {
-            i @ 0..32 => file[i as usize],
-            _ => unsafe { unreachable_unchecked() },
-        }
+    pub const fn new(index: u8) -> Self {
+        assert!(index < 32);
+        Self(index)
     }
 
-    #[inline(always)]
-    pub fn set(self, file: &mut [Word; 32], value: Word) {
-        match self.0 {
-            0 => {}
-            i @ 1..32 => file[i as usize] = value,
-            _ => unsafe { unreachable_unchecked() },
-        }
+    pub fn raw(self) -> u8 {
+        self.0
     }
+}
 
-    pub fn u32(self) -> u32 {
-        self.0 as u32
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Imm(pub i32);
+
+impl From<i32> for Imm {
+    fn from(value: i32) -> Self {
+        Imm(value)
+    }
+}
+
+impl From<Imm> for i32 {
+    fn from(value: Imm) -> Self {
+        value.0
     }
 }
 
@@ -200,19 +75,19 @@ impl EncInstr {
     }
 
     #[inline(always)]
-    pub fn i_imm(self) -> Word {
+    pub fn i_imm(self) -> Imm {
         Self::extend(self.extract(20, 12, 0), 12)
     }
 
     #[inline(always)]
-    pub fn s_imm(self) -> Word {
+    pub fn s_imm(self) -> Imm {
         let a = self.extract(7, 5, 0);
         let b = self.extract(25, 7, 5);
         Self::extend(a | b, 12)
     }
 
     #[inline(always)]
-    pub fn b_imm(self) -> Word {
+    pub fn b_imm(self) -> Imm {
         let a = self.extract(8, 4, 1);
         let b = self.extract(25, 6, 5);
         let c = self.extract(7, 1, 11);
@@ -221,12 +96,12 @@ impl EncInstr {
     }
 
     #[inline(always)]
-    pub fn u_imm(self) -> Word {
+    pub fn u_imm(self) -> Imm {
         Self::extend(self.extract(12, 20, 12), 32)
     }
 
     #[inline(always)]
-    pub fn j_imm(self) -> Word {
+    pub fn j_imm(self) -> Imm {
         let a = self.extract(21, 4, 1);
         let b = self.extract(25, 6, 5);
         let c = self.extract(20, 1, 11);
@@ -241,102 +116,209 @@ impl EncInstr {
     }
 
     #[inline(always)]
-    fn extract(self, start: u32, len: u32, pos: u32) -> u32 {
-        extract(self.0, start, len, pos)
+    fn extract(self, start: u32, len: u32, pos: u32) -> i32 {
+        bit_utils::extract(self.0, start, len, pos) as i32
     }
 
     #[inline(always)]
-    fn extend(value: u32, len: u32) -> Word {
+    fn extend(value: i32, len: u32) -> Imm {
         let shift = 32 - len;
-        Word(((value as i32) << shift) >> shift)
-    }
-}
-
-impl FromIterator<EncInstr> for Vec<u8> {
-    fn from_iter<T: IntoIterator<Item = EncInstr>>(iter: T) -> Self {
-        iter.into_iter().flat_map(|ins| ins.0.to_le_bytes()).collect()
+        Imm((value << shift) >> shift)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct InstrBuilder(u32);
+pub enum Instr {
+    // Load/store
+    Ld(RdRs1Imm),
+    Lw(RdRs1Imm),
+    Lwu(RdRs1Imm),
+    Lh(RdRs1Imm),
+    Lhu(RdRs1Imm),
+    Lb(RdRs1Imm),
+    Lbu(RdRs1Imm),
+    Sd(Rs1Rs2Imm),
+    Sw(Rs1Rs2Imm),
+    Sh(Rs1Rs2Imm),
+    Sb(Rs1Rs2Imm),
+    // Integer register-immediate
+    Addi(RdRs1Imm),
+    Slti(RdRs1Imm),
+    Sltiu(RdRs1Imm),
+    Andi(RdRs1Imm),
+    Ori(RdRs1Imm),
+    Xori(RdRs1Imm),
+    Slli(RdRs1Imm),
+    Srli(RdRs1Imm),
+    Srai(RdRs1Imm),
+    Lui(RdRs1Imm),
+    Auipc(RdRs1Imm),
+    Mv(RdRs1),
+    Li(RdImm),
+    Seqz(RdRs1),
+    Not(RdRs1),
+    Nop,
+    // Integer register-immediate (rv64)
+    Addiw(RdRs1Imm),
+    Slliw(RdRs1Imm),
+    Srliw(RdRs1Imm),
+    Sraiw(RdRs1Imm),
+    Sextw(RdRs1),
+    // Integer register-register
+    Add(RdRs1Rs2),
+    Sub(RdRs1Rs2),
+    Slt(RdRs1Rs2),
+    Sltu(RdRs1Rs2),
+    And(RdRs1Rs2),
+    Or(RdRs1Rs2),
+    Xor(RdRs1Rs2),
+    Sll(RdRs1Rs2),
+    Srl(RdRs1Rs2),
+    Sra(RdRs1Rs2),
+    Snez(RdRs1),
+    Sltz(RdRs1),
+    Sgtz(RdRs1),
+    Neg(RdRs1),
+    // Integer register-register (rv64)
+    Addw(RdRs1Rs2),
+    Subw(RdRs1Rs2),
+    Sllw(RdRs1Rs2),
+    Srlw(RdRs1Rs2),
+    Sraw(RdRs1Rs2),
+    // Multiplication
+    Mul(RdRs1Rs2),
+    Mulh(RdRs1Rs2),
+    Mulhu(RdRs1Rs2),
+    Mulhsu(RdRs1Rs2),
+    Div(RdRs1Rs2),
+    Divu(RdRs1Rs2),
+    Rem(RdRs1Rs2),
+    Remu(RdRs1Rs2),
+    // Multiplication
+    Mulw(RdRs1Rs2),
+    Divw(RdRs1Rs2),
+    Divuw(RdRs1Rs2),
+    Remw(RdRs1Rs2),
+    Remuw(RdRs1Rs2),
+    // Branch
+    Beq(Rs1Rs2Imm),
+    Bne(Rs1Rs2Imm),
+    Blt(Rs1Rs2Imm),
+    Bltu(Rs1Rs2Imm),
+    Bge(Rs1Rs2Imm),
+    Bgeu(Rs1Rs2Imm),
+    Bgt(Rs1Rs2Imm),
+    Bgtu(Rs1Rs2Imm),
+    Ble(Rs1Rs2Imm),
+    Bleu(Rs1Rs2Imm),
+    Beqz(Rs1Imm),
+    Bnez(Rs1Imm),
+    Blez(Rs1Imm),
+    Bgez(Rs1Imm),
+    Bltz(Rs1Imm),
+    Bgtz(Rs1Imm),
+    // Jump and link
+    Jal(RdImm),
+    Jalr(RdRs1Imm),
+    Jump(Imm),
+    Jr(Rs1Imm),
+    Ret,
+    // Misc mem
+    Fence(FenceArgs),
+    FenceBare,
+    FenceTso,
+    Pause,
+    Fencei,
+    // System
+    Ecall,
+    Ebreak,
+    // Illegal
+    Illegal(EncInstr),
+}
 
-impl InstrBuilder {
-    pub fn new(opcode: u32) -> Self {
-        debug_assert_eq!(opcode >> 7, 0);
-        Self(opcode)
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RdRs1Imm {
+    pub rd: Reg,
+    pub rs1: Reg,
+    pub imm: Imm,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Rs1Rs2Imm {
+    pub rs1: Reg,
+    pub rs2: Reg,
+    pub imm: Imm,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RdRs1Rs2 {
+    pub rd: Reg,
+    pub rs1: Reg,
+    pub rs2: Reg,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RdRs1 {
+    pub rd: Reg,
+    pub rs1: Reg,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RdImm {
+    pub rd: Reg,
+    pub imm: Imm,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Rs1Imm {
+    pub rs1: Reg,
+    pub imm: Imm,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FenceArgs {
+    pub pred: FenceFlags,
+    pub succ: FenceFlags,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FenceFlags(u8);
+
+impl FenceFlags {
+    pub const INPUT: Self = Self(0b1000);
+    pub const OUTPUT: Self = Self(0b0100);
+    pub const READ: Self = Self(0b0010);
+    pub const WRITE: Self = Self(0b0001);
+
+    pub const NONE: Self = Self(0b0000);
+    pub const ALL: Self = Self(0b1111);
+
+    pub fn new(raw: u8) -> Self {
+        assert!(raw < 16);
+        Self(raw)
     }
 
-    pub fn rd(self, rd: Reg) -> Self {
-        Self(self.0 | (rd.u32() << 7))
+    pub fn test(self, flags: Self) -> bool {
+        (self.0 & flags.0) == flags.0
     }
 
-    pub fn rs1(self, rs1: Reg) -> Self {
-        Self(self.0 | (rs1.u32() << 15))
-    }
-
-    pub fn rs2(self, rs2: Reg) -> Self {
-        Self(self.0 | (rs2.u32() << 20))
-    }
-
-    pub fn fn3(self, fn3: u32) -> Self {
-        debug_assert_eq!(fn3 >> 3, 0);
-        Self(self.0 | (fn3 << 12))
-    }
-
-    pub fn fn7(self, fn7: u32) -> Self {
-        debug_assert_eq!(fn7 >> 7, 0);
-        Self(self.0 | (fn7 << 25))
-    }
-
-    pub fn i_imm(self, imm: impl Into<Word>) -> Self {
-        let imm = imm.into();
-        debug_assert!(imm.fits(12));
-        Self(self.0 | imm.extract(0, 12, 20))
-    }
-
-    pub fn s_imm(self, imm: impl Into<Word>) -> Self {
-        let imm = imm.into();
-        debug_assert!(imm.fits(12));
-        let a = imm.extract(0, 5, 7);
-        let b = imm.extract(5, 7, 25);
-        Self(self.0 | a | b)
-    }
-
-    pub fn b_imm(self, imm: impl Into<Word>) -> Self {
-        let imm = imm.into();
-        debug_assert_eq!(imm.u32() & 1, 0);
-        debug_assert!(imm.fits(13));
-        let a = imm.extract(11, 1, 7);
-        let b = imm.extract(1, 4, 8);
-        let c = imm.extract(5, 6, 25);
-        let d = imm.extract(31, 1, 31);
-        Self(self.0 | a | b | c | d)
-    }
-
-    pub fn u_imm(self, imm: impl Into<Word>) -> Self {
-        let imm = imm.into();
-        debug_assert_eq!(imm.u32() & 0xfff, 0);
-        Self(self.0 | imm.extract(12, 20, 12))
-    }
-
-    pub fn j_imm(self, imm: impl Into<Word>) -> Self {
-        let imm = imm.into();
-        debug_assert_eq!(imm.u32() & 1, 0);
-        debug_assert!(imm.fits(21));
-        let a = imm.extract(12, 8, 12);
-        let b = imm.extract(11, 1, 20);
-        let c = imm.extract(1, 10, 21);
-        let d = imm.extract(31, 1, 31);
-        Self(self.0 | a | b | c | d)
-    }
-
-    pub fn build(self) -> EncInstr {
-        EncInstr(self.0)
+    pub fn raw(self) -> u8 {
+        self.0
     }
 }
 
-#[inline(always)]
-fn extract(value: u32, start: u32, len: u32, pos: u32) -> u32 {
-    ((value >> start) & (!0 >> (32 - len))) << pos
+impl BitOr for FenceFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitAnd for FenceFlags {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
 }

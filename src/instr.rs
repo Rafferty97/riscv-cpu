@@ -1,4 +1,4 @@
-use std::{fmt::Debug, hint::unreachable_unchecked};
+use std::{fmt::Debug, hint::unreachable_unchecked, ops::BitAnd};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct Word(i32);
@@ -115,6 +115,14 @@ impl From<u64> for Word {
     }
 }
 
+impl BitAnd for Word {
+    type Output = Word;
+
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Width {
     Byte,
@@ -184,6 +192,11 @@ impl EncInstr {
     #[inline(always)]
     pub fn fn7(self) -> u32 {
         self.0 >> 25
+    }
+
+    #[inline(always)]
+    pub fn fn12(self) -> u32 {
+        self.0 >> 20
     }
 
     #[inline(always)]

@@ -98,6 +98,11 @@ pub enum Instr {
     Jump(Imm),
     Jr(Rs1Imm),
     Ret,
+    // Misc mem
+    Fence(FenceArgs),
+    FenceBare,
+    FenceTso,
+    Pause,
     // System
     Ecall,
     Ebreak,
@@ -149,6 +154,42 @@ pub struct Rs1Imm {
     pub imm: Word,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FenceArgs {
+    pub pred: FenceFlags,
+    pub succ: FenceFlags,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FenceFlags {
+    pub input: bool,
+    pub output: bool,
+    pub read: bool,
+    pub write: bool,
+}
+
+pub const IORW: FenceFlags = FenceFlags { input: true, output: true, read: true, write: true };
+pub const IORW_IORW: FenceArgs = FenceArgs { pred: IORW, succ: IORW };
+
+impl FenceFlags {
+    fn decode(flags: u32) -> Self {
+        FenceFlags {
+            input: (flags & 8) != 0,
+            output: (flags & 4) != 0,
+            read: (flags & 2) != 0,
+            write: (flags & 1) != 0,
+        }
+    }
+
+    fn encode(self) -> u32 {
+        let input = (self.input as u32) << 3;
+        let output = (self.output as u32) << 2;
+        let read = (self.read as u32) << 1;
+        let write = (self.write as u32) << 0;
+        input | output | read | write
+    }
+}
+
 impl Instr {
     pub fn decode_with_pseudos(enc: EncInstr) -> Self {
         Self::decode(enc).add_pseudos()
@@ -158,15 +199,15 @@ impl Instr {
         match enc.opcode() {
             0b0000011 => Self::decode_load(enc),
             0b0100011 => Self::decode_store(enc),
-            0b0010011 => Self::decode_int_imm(enc),
-            0b0011011 => Self::decode_int_imm_32(enc),
-            0b0110011 => Self::decode_int(enc),
-            0b0111011 => Self::decode_int_32(enc),
+            0b0010011 => Self::decode_op_imm(enc),
+            0b0011011 => Self::decode_op_imm_32(enc),
+            0b0110011 => Self::decode_op(enc),
+            0b0111011 => Self::decode_op_32(enc),
             0b1100011 => Self::decode_branch(enc),
             0b1101111 => Self::Jal(RdImm { rd: enc.rd(), imm: enc.j_imm() }),
             0b1100111 => Self::Jalr(RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.i_imm() }),
-            0b0110111 => Self::Lui(RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.u_imm() }),
             0b0010111 => Self::Auipc(RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.u_imm() }),
+            0b0110111 => Self::Lui(RdRs1Imm { rd: enc.rd(), rs1: enc.rs1(), imm: enc.u_imm() }),
             0b0001111 => Self::decode_misc_mem(enc),
             0b1110011 => Self::decode_system(enc),
             _ => Self::Illegal(enc),
@@ -200,7 +241,7 @@ impl Instr {
         }
     }
 
-    fn decode_int_imm(enc: EncInstr) -> Self {
+    fn decode_op_imm(enc: EncInstr) -> Self {
         const F0: u32 = 0b000000;
         const F1: u32 = 0b010000;
 
@@ -209,19 +250,19 @@ impl Instr {
 
         match (enc.fn3(), enc.fn7() >> 1) {
             (0b000, _) => Self::Addi(args),
-            (0b001, F0) => Self::Slli(RdRs1Imm { rd, rs1, imm: imm & 63 }),
+            (0b001, F0) => Self::Slli(RdRs1Imm { rd, rs1, imm: imm & 63.into() }),
             (0b010, _) => Self::Slti(args),
             (0b011, _) => Self::Sltiu(args),
             (0b100, _) => Self::Xori(args),
-            (0b101, F0) => Self::Srli(RdRs1Imm { rd, rs1, imm: imm & 63 }),
-            (0b101, F1) => Self::Srai(RdRs1Imm { rd, rs1, imm: imm & 63 }),
+            (0b101, F0) => Self::Srli(RdRs1Imm { rd, rs1, imm: imm & 63.into() }),
+            (0b101, F1) => Self::Srai(RdRs1Imm { rd, rs1, imm: imm & 63.into() }),
             (0b110, _) => Self::Ori(args),
             (0b111, _) => Self::Andi(args),
             _ => Self::Illegal(enc),
         }
     }
 
-    fn decode_int_imm_32(enc: EncInstr) -> Self {
+    fn decode_op_imm_32(enc: EncInstr) -> Self {
         const F0: u32 = 0b0000000;
         const F1: u32 = 0b0100000;
 
@@ -230,14 +271,14 @@ impl Instr {
 
         match (enc.fn3(), enc.fn7()) {
             (0b000, _) => Self::Addiw(args),
-            (0b001, F0) => Self::Slliw(RdRs1Imm { rd, rs1, imm: imm & 31 }),
-            (0b101, F0) => Self::Srliw(RdRs1Imm { rd, rs1, imm: imm & 31 }),
-            (0b101, F1) => Self::Sraiw(RdRs1Imm { rd, rs1, imm: imm & 31 }),
+            (0b001, F0) => Self::Slliw(RdRs1Imm { rd, rs1, imm: imm & 31.into() }),
+            (0b101, F0) => Self::Srliw(RdRs1Imm { rd, rs1, imm: imm & 31.into() }),
+            (0b101, F1) => Self::Sraiw(RdRs1Imm { rd, rs1, imm: imm & 31.into() }),
             _ => Self::Illegal(enc),
         }
     }
 
-    fn decode_int(enc: EncInstr) -> Self {
+    fn decode_op(enc: EncInstr) -> Self {
         let args = RdRs1Rs2 { rd: enc.rd(), rs1: enc.rs1(), rs2: enc.rs2() };
 
         match enc.fn7() {
@@ -278,7 +319,7 @@ impl Instr {
         }
     }
 
-    fn decode_int_32(enc: EncInstr) -> Self {
+    fn decode_op_32(enc: EncInstr) -> Self {
         let args = RdRs1Rs2 { rd: enc.rd(), rs1: enc.rs1(), rs2: enc.rs2() };
 
         match enc.fn7() {
@@ -327,7 +368,21 @@ impl Instr {
 
     fn decode_misc_mem(enc: EncInstr) -> Self {
         match enc.fn3() {
-            0b000 | 0b001 => todo!(),
+            0b000 => Self::decode_fence(enc),
+            _ => Self::Illegal(enc),
+        }
+    }
+
+    fn decode_fence(enc: EncInstr) -> Self {
+        let imm = enc.i_imm().u32();
+        match imm {
+            0b0000_0001_0000 => Self::Pause,
+            0b0000_0000_0000..=0b0000_1111_1111 => {
+                let pred = FenceFlags::decode(imm >> 4);
+                let succ = FenceFlags::decode(imm);
+                Self::Fence(FenceArgs { pred, succ })
+            }
+            0b1000_0011_0011 => Self::FenceTso,
             _ => Self::Illegal(enc),
         }
     }
@@ -336,9 +391,10 @@ impl Instr {
         if enc.rd() != Reg::ZERO || enc.rs1() != Reg::ZERO || enc.fn3() != 0 {
             return Self::Illegal(enc);
         }
-        match enc.fn7() {
-            0b000000000000 => Self::Ecall,
-            0b000000000001 => Self::Ebreak,
+
+        match enc.fn12() {
+            0b0000_0000_0000 => Self::Ecall,
+            0b0000_0000_0001 => Self::Ebreak,
             _ => Self::Illegal(enc),
         }
     }
@@ -370,6 +426,7 @@ impl Instr {
             Self::Jump(Imm { imm }) => Self::Jal(RdImm { rd: Reg::ZERO, imm }),
             Self::Jr(Rs1Imm { rs1, imm }) => Self::Jalr(RdRs1Imm { rd: Reg::ZERO, rs1, imm }),
             Self::Ret => Self::Jalr(RdRs1Imm { rd: Reg::ZERO, rs1: Reg::RA, imm: Word::ZERO }),
+            Self::FenceBare => Self::Fence(IORW_IORW),
             _ => self,
         }
     }
@@ -432,6 +489,7 @@ impl Instr {
                 (Reg::ZERO, _, _) => Self::Jr(Rs1Imm { rs1, imm }),
                 _ => self,
             },
+            Self::Fence(args) if args == IORW_IORW => Self::FenceBare,
             _ => self,
         }
     }
@@ -529,6 +587,10 @@ impl Display for Instr {
             Self::Jump(args) => write(f, "j", args),
             Self::Jr(args) => write(f, "jr", args),
             Self::Ret => write(f, "ret", ""),
+            Self::Fence(args) => write(f, "fence", args),
+            Self::FenceBare => write(f, "fence", ""),
+            Self::FenceTso => write(f, "fence.tso", ""),
+            Self::Pause => write(f, "pause", ""),
             Self::Ecall => write(f, "ecall", ""),
             Self::Ebreak => write(f, "ebreak", ""),
             Self::Illegal(enc) => write!(f, "<illegal {:#010x}>", enc.u32()),
@@ -575,6 +637,36 @@ impl Display for Imm {
 impl Display for Rs1Imm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}, {}", self.rs1, self.imm)
+    }
+}
+
+impl Display for FenceArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}, {}", self.pred, self.succ)
+    }
+}
+
+impl Display for FenceFlags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match (self.input, self.output, self.read, self.write) {
+            (false, false, false, false) => "",
+            (false, false, false, true) => "w",
+            (false, false, true, false) => "r",
+            (false, false, true, true) => "rw",
+            (false, true, false, false) => "o",
+            (false, true, false, true) => "ow",
+            (false, true, true, false) => "or",
+            (false, true, true, true) => "orw",
+            (true, false, false, false) => "i",
+            (true, false, false, true) => "iw",
+            (true, false, true, false) => "ir",
+            (true, false, true, true) => "irw",
+            (true, true, false, false) => "io",
+            (true, true, false, true) => "iow",
+            (true, true, true, false) => "ior",
+            (true, true, true, true) => "iorw",
+        };
+        write!(f, "{str}")
     }
 }
 

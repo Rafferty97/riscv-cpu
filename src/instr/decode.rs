@@ -221,3 +221,92 @@ impl Instr {
         }
     }
 }
+
+impl EncInstr {
+    #[inline(always)]
+    pub fn opcode(self) -> u32 {
+        self.0 & 127
+    }
+
+    #[inline(always)]
+    pub fn rd(self) -> Reg {
+        Reg(((self.0 >> 7) & 31) as u8)
+    }
+
+    #[inline(always)]
+    pub fn rs1(self) -> Reg {
+        Reg(((self.0 >> 15) & 31) as u8)
+    }
+
+    #[inline(always)]
+    pub fn rs2(self) -> Reg {
+        Reg(((self.0 >> 20) & 31) as u8)
+    }
+
+    #[inline(always)]
+    pub fn fn3(self) -> u32 {
+        (self.0 >> 12) & 7
+    }
+
+    #[inline(always)]
+    pub fn fn7(self) -> u32 {
+        self.0 >> 25
+    }
+
+    #[inline(always)]
+    pub fn fn12(self) -> u32 {
+        self.0 >> 20
+    }
+
+    #[inline(always)]
+    pub fn i_imm(self) -> Imm {
+        Self::extend(self.extract(20, 12, 0), 12)
+    }
+
+    #[inline(always)]
+    pub fn s_imm(self) -> Imm {
+        let a = self.extract(7, 5, 0);
+        let b = self.extract(25, 7, 5);
+        Self::extend(a | b, 12)
+    }
+
+    #[inline(always)]
+    pub fn b_imm(self) -> Imm {
+        let a = self.extract(8, 4, 1);
+        let b = self.extract(25, 6, 5);
+        let c = self.extract(7, 1, 11);
+        let d = self.extract(31, 1, 12);
+        Self::extend(a | b | c | d, 13)
+    }
+
+    #[inline(always)]
+    pub fn u_imm(self) -> Imm {
+        Self::extend(self.extract(12, 20, 12), 32)
+    }
+
+    #[inline(always)]
+    pub fn j_imm(self) -> Imm {
+        let a = self.extract(21, 4, 1);
+        let b = self.extract(25, 6, 5);
+        let c = self.extract(20, 1, 11);
+        let d = self.extract(12, 8, 12);
+        let e = self.extract(31, 1, 20);
+        Self::extend(a | b | c | d | e, 21)
+    }
+
+    #[inline(always)]
+    pub fn u32(self) -> u32 {
+        self.0
+    }
+
+    #[inline(always)]
+    fn extract(self, start: u32, len: u32, pos: u32) -> i32 {
+        bit_utils::extract(self.0, start, len, pos) as i32
+    }
+
+    #[inline(always)]
+    fn extend(value: i32, len: u32) -> Imm {
+        let shift = 32 - len;
+        Imm((value << shift) >> shift)
+    }
+}

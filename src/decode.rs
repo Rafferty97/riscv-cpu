@@ -103,6 +103,7 @@ pub enum Instr {
     FenceBare,
     FenceTso,
     Pause,
+    Fencei,
     // System
     Ecall,
     Ebreak,
@@ -369,6 +370,7 @@ impl Instr {
     fn decode_misc_mem(enc: EncInstr) -> Self {
         match enc.fn3() {
             0b000 => Self::decode_fence(enc),
+            0b001 => Self::Fencei,
             _ => Self::Illegal(enc),
         }
     }
@@ -591,6 +593,7 @@ impl Display for Instr {
             Self::FenceBare => write(f, "fence", ""),
             Self::FenceTso => write(f, "fence.tso", ""),
             Self::Pause => write(f, "pause", ""),
+            Self::Fencei => write(f, "fence.i", ""),
             Self::Ecall => write(f, "ecall", ""),
             Self::Ebreak => write(f, "ebreak", ""),
             Self::Illegal(enc) => write!(f, "<illegal {:#010x}>", enc.u32()),

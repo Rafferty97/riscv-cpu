@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::sync::LazyLock;
 
-use crate::instr::{FenceFlags, Imm, Instr, Reg};
+use super::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct AsmPrinter {
